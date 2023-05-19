@@ -6,16 +6,20 @@ import  random
 import math
 import os
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
+from qiskit import QuantumCircuit, execute, Aer
 
 
 qc = QuantumCircuit(3)
+#qc.cx(0,1)
+
 qc.h(0)
 qc.h(2)
-qc.cx(2,0)
+qc.cx(2,1)
 qc.cx(0,1)
+qc.cx(2,0)
 qc.h(2)
-
 a = qc.qasm(filename = "test.qasm")
+
 print(a)
 
 
@@ -44,13 +48,52 @@ def text_to_function(text):
     qubits = [int(x)  for x in text[1]  if x.isdigit() == True]
     return func, qubits
 
-'''
-указываем входные и выходные параметры для каждой функции 
-глобальная фаза не учтена, но это важно
-'''
+def perebor(array,ind:int, param, state = None): #принимает массив, индекс, режим
+    l_str = int(math.log(len(array), 2.0))
+    l_str -= 1
+    #if param == "comparison":
 
-#math.isclose(0.1 + 0.2, 0.3, rel_tol=1e-20)
-#numpy.allclose()
+    if param == "0":  #проверка на ноль
+        for i in range(2 ** l_str):
+
+            line = '{0:0' + str(l_str) + 'b}'
+            a = line.format(i)
+
+            a = a[:ind] + "1" + a[ind:]
+            a = a[::-1]
+            if array[int(a,2)] != 0:
+                return False
+
+        return True
+
+    if param == "0":  #проверка на единицу
+        for i in range(2 ** l_str):
+
+            line = '{0:0' + str(l_str) + 'b}'
+            a = line.format(i)
+
+            a = a[:ind] + "0" + a[ind:]
+            a = a[::-1]
+            if array[int(a,2)] != 0:
+                return False
+
+        return True
+
+    if param == "srav":   # проверяет, находится ли кубит в одном из состояний |+> |->
+        for i in range(2 ** l_str):
+            line = '{0:0' + str(l_str) + 'b}'
+            c = line.format(i)
+
+            a = c[:ind] + "1" + c[ind:]
+            a = a[::-1]
+            b = c[:ind] + "0" + c[ind:]
+            b = b[::-1]
+
+            if array[int(a,2)] != array[int(b,2)]  and  array[int(a,2)] != -array[int(b,2)]:
+                return False
+        return True
+
+
 
 class Hoare_function:
     def __init__(self, name, q1, q2 = None):
@@ -59,24 +102,31 @@ class Hoare_function:
         self.q1 = q1
         self.q2 = q2
         self.matrix = None
+        self.matrix2 = None
 
-    def P(self, vector_global):   #функция на проверку условия тривиальности
-        #print(self.trivial, vector_global)
-        if self.name == "swap" and vector_global[2*self.q1:2*self.q1+2] == vector_global[2 * self.q2:2 * self.q2 + 2] :
+    def P(self, vector_global):
+
+        if self.name == "swap" and perebor(vector_global, 10, 6): #нужно сравнение двух кубитов отдельной функцией
             return False
 
         if self.q2 == None:
-            vector = vector_global[2*self.q1:2*self.q1+2]
-            if vector in self.trivial:
-                return False
-        else:
-            vector1 =vector_global[2 * self.q1:2 * self.q1 + 2]
-            if np.allclose(vector1, np.array([1,0]), rtol=1e-03):
-                return False
-            else:
-                vector2 = vector_global[2 * self.q2:2 * self.q2 + 2]
-                if find(vector2,self.trivial ):   #может быть ошибка, но можно просто написать функцию
+            if self.name in ["y", "z"]:
+                if perebor(vector_global, self.q1, "0") or perebor(vector_global, self.q1, "1"):
                     return False
+            if self.name == "x":
+                if perebor(vector_global, self.q1, "srav"):
+                    return False
+        else:
+            if perebor(vector_global, self.q1, "0"):
+                return False
+
+            else:
+                if self.name in ["cy", "cz"]:
+                    if perebor(vector_global, self.q2, "0") or perebor(vector_global, self.q2, "1"):
+                        return False
+                if self.name == "cx":
+                    if perebor(vector_global, self.q2, "srav"):
+                        return False
         return  True
 
     def Q(self):
@@ -105,6 +155,10 @@ class Hoare_function:
             ])/math.sqrt(2)
         elif self.name == "cx":
             self.trivial = [np.array([1, 1]) / math.sqrt(2), np.array([1, -1]) / math.sqrt(2)]
+            self.matrix2 = np.array([
+                [0,1],
+                [1,0]
+            ])
             self.matrix =  np.array([
                 [1, 0, 0, 0],
                 [0, 1 ,0, 0],
@@ -113,6 +167,10 @@ class Hoare_function:
             ])
         elif self.name == "cz":
             self.trivial = [np.array([1, 0]), np.array([0, 1])]
+            self.matrix2 = np.array([
+                [1,0],
+                [0,-1]
+            ])
             self.matrix =  np.array([
                 [1, 0, 0, 0],
                 [0, 1 ,0, 0],
@@ -121,6 +179,10 @@ class Hoare_function:
             ])
         elif self.name == "cy":
             self.trivial = [np.array([1, 0]), np.array([0, 1])]
+            self.matrix2  = np.array([
+                [0,-1j],
+                [1j,0]
+            ])
             self.matrix = np.array([
                 [1, 0, 0, 0],
                 [0, 1 ,0, 0],
@@ -128,6 +190,10 @@ class Hoare_function:
                 [0, 0, 1j, 0]
             ])
         elif self.name == "ch":
+            self.matrix = np.array([
+                [1, 1],
+                [1, -1]
+            ]) / math.sqrt(2)
             self.matrix = np.array([
                 [1, 0, 0, 0],
                 [0, 1 ,0, 0],
@@ -146,49 +212,40 @@ class Hoare_function:
             return print("no working")
 
 
-
     def R(self, vector_global):
         self.Q()
+
         if self.P(vector_global) == True:
-            #продолжаем делать цепочку и преобразуем вектор
-            if self.q2 == None:
-                vector = vector_global[2 * self.q1:2 * self.q1 + 2]
-            else:
-                vector = np.hstack((vector_global[2 * self.q1:2 * self.q1 + 2] , vector_global[2 * self.q2:2 * self.q2 + 2]))
+            # в цепочку добавляем   <---- при выполнении команды qc.from_qasm_str("h q[0];") выдает ошибку, поэтому обработка "вручную"
+            if self.name == "x":
+                qc.x(self.q1)
+            elif self.name == "z":
+                qc.z(self.q1)
+            elif self.name == "y":
+                qc.y(self.q1)
+            elif self.name == "h":
+                qc.h(self.q1)
+            elif self.name == "cx":
+                qc.cx(self.q1, self.q2)
+            elif self.name == "cy":
+                qc.cy(self.q1, self.q2)
+            elif self.name == "cz":
+                qc.cz(self.q1, self.q2)
+            elif self.name == "ch":
+                qc.ch(self.q1, self.q2)
+            elif self.name == "swap":
+                qc.swap(self.q1, self.q2)
 
-            new_vector = np.dot(self.matrix, vector)
 
-            vector_global[2 * self.q1] = new_vector[0]
-            vector_global[2 * self.q1 +1] =new_vector[1]
+            simulator = Aer.get_backend('statevector_simulator')
+            vector_global = execute(qc, simulator).result().get_statevector()
 
-            #print(new_vector[0], vector_global[2 * self.q1], a[2 * self.q1])
-            #print(vector_global)
-
-            if self.q2 != None:
-                vector_global[2 * self.q2] = new_vector[2]
-                vector_global[2 * self.q2 + 1] = new_vector[3]
             return vector_global
-        else:
-            return vector_global  #выводим прошлым вектор, не учитываем преобразование в новой цепочки
 
+        simulator = Aer.get_backend('statevector_simulator')
+        vector_global = execute(qc, simulator).result().get_statevector()
 
-    def RR(self, state_matrix, vector_global):
-        self.Q()
-        if self.P(vector_global) == True:
-
-            n = state_matrix.shape[0]
-            local_matrix = np.diag([1] * n).astype(float)
-            #print(local_matrix)
-            local_matrix[2 * self.q1][2 * self.q1],    local_matrix[2 * self.q1][2 * self.q1+1]   = self.matrix[0][0], self.matrix[0][1]
-            local_matrix[2 * self.q1+1][2 * self.q1],  local_matrix[2 * self.q1+1][2 * self.q1+1] = self.matrix[1][0], self.matrix[1][1]
-            if self.q2 != None:
-                local_matrix[2 * self.q2][2 * self.q2], local_matrix[2 * self.q2][2 * self.q2 + 1] = self.matrix[2][2], self.matrix[2][3]
-                local_matrix[2 * self.q2 + 1][2 * self.q2], local_matrix[2 * self.q2 + 1][2 * self.q2 + 1] = self.matrix[3][2], self.matrix[3][3]
-            #print(local_matrix)
-            new_matrix =  np.dot(state_matrix, local_matrix)
-            return new_matrix
-        else:
-            return state_matrix
+        return vector_global
 
 
 
@@ -244,48 +301,33 @@ def removing(listt, del1, del2):
 ##############################################################################################################3
 
 number_q, operation_list = read_qasm("test.qasm")
-#print(number_q, operation_list)
 
-#qc_new = QuantumCircuit(number_q)
-'''
-хранение списка векторов после каждого выполнения - а нужно ли вообще?
-'''
-vector_array = [np.array([1,0]*number_q, dtype=float)]
+qc = QuantumCircuit(number_q)
+simulator = Aer.get_backend('statevector_simulator')
 
 
-'''
-итеррация по циклу
-'''
-
+vector_array = [execute(qc, simulator).result().get_statevector()]
 state_matrix = np.diag([1] * 2*number_q).astype(float)
 
 
 for operation in operation_list:
     name, qubits_list = text_to_function(operation)
+
     if len(qubits_list) ==2:
         object = Hoare_function(name , qubits_list[0], qubits_list[1])
     else:
         object = Hoare_function(name, qubits_list[0])
-    #print(vector_array[-1], "----было так")
-    #print(object.R(vector_array[-1]))
-    #vector_array.append(object.R(vector_array[-1]))  <---- старый вариант
-    matrix = object.RR(state_matrix, vector_array[-1])
-    a = np.dot(state_matrix, matrix)
-    state_matrix = a
-    vector_array.append( np.dot(state_matrix, vector_array[-1]))
 
-    #print(vector_array[-1], "----стало так")
-#print(vector_array)
+    a = object.R(vector_array[-1])
+    vector_array.append(a)
 
-# есть лист с операциями и векторами находим похожие вектора, записывваем в слварь
+
+print(qc.draw())
+print(vector_array)
 
 vectors_dict = np_dict()
 new_operation_list = []
-#print(vectors_dict.keys, "fkfkfkfkf")
 
-'''
-создаем словарь из векторов и заполняем его
-'''
 
 for i in range(len(vector_array)):
     vectors_dict.append(vector_array[i], [i])
@@ -300,12 +342,8 @@ for i in range(len(vector_array)):
         else:
             new_operation_list.append(0)
 
-
-#print(new_operation_list)
-#print(vectors_dict.values)
-
-
-
+print(vectors_dict.values)
+#уничтожение похожих векторов
 
 while True:
     maxi = 0
@@ -329,14 +367,7 @@ while True:
     else:
         break
 
-
-
-#print(vectors_dict.values)
-#print(vectors_dict.values[2])
-#print(vectors_dict.all_vectors())
-
-
-
+#формирование нового файла
 with open("new.qasm", "w") as text:
     a, b= read_qasm("test.qasm")
     text.write("OPENQASM 2.0; \n")
@@ -347,20 +378,5 @@ with open("new.qasm", "w") as text:
             text.write((operation_list[i]) +";\n")
     text.close()
 
-
-
 new_qc = QuantumCircuit.from_qasm_file("new.qasm")
 print(new_qc.draw())
-
-'''
-выкидываем очевидные тривиальные гейты
-'''
-
-#print(vectors_dict.keys)
-#print(vectors_dict.values)
-#print(vector_array[0])
-#print(vector_array[1])
-#print(vector_array[2])
-#print(vector_array[3])
-#print(vector_array[4])
-#print(vector_array[5])
