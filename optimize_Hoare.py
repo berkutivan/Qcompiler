@@ -11,9 +11,11 @@ from qiskit import QuantumCircuit, execute, Aer
 
 qc = QuantumCircuit(3)
 #qc.cx(0,1)
-
+qc.rx(0.5, 0)
 qc.h(0)
 qc.h(2)
+qc.swap(0,2)
+
 qc.cx(2,1)
 qc.cx(0,1)
 qc.cx(2,0)
@@ -48,10 +50,26 @@ def text_to_function(text):
     qubits = [int(x)  for x in text[1]  if x.isdigit() == True]
     return func, qubits
 
+
+def comparsion(array, ind1, ind2):
+    l_str = int(math.log(len(array), 2.0))
+    l_str -= 1
+    for i in range(2 ** l_str):
+        line = '{0:0' + str(l_str) + 'b}'
+        a = line.format(i)
+
+        q10 = a[:ind1] + "0" + a[ind1:]
+        q11 = a[:ind1] + "1" + a[ind1:]
+        q20 = a[:ind2] + "0" + a[ind2:]
+        q21 = a[:ind2] + "1" + a[ind2:]
+        q10, q11, q20, q21 = q10[::-1], q11[::-1], q20[::-1], q21[::-1]
+        if q10 != q20 or q11 != q21:
+            return False
+    return True
+
 def perebor(array,ind:int, param, state = None): #принимает массив, индекс, режим
     l_str = int(math.log(len(array), 2.0))
     l_str -= 1
-    #if param == "comparison":
 
     if param == "0":  #проверка на ноль
         for i in range(2 ** l_str):
@@ -106,8 +124,9 @@ class Hoare_function:
 
     def P(self, vector_global):
 
-        if self.name == "swap" and perebor(vector_global, 10, 6): #нужно сравнение двух кубитов отдельной функцией
-            return False
+        if self.name == "swap": #нужно сравнение двух кубитов отдельной функцией
+            return not(comparsion(vector_global,self.q1, self.q2))
+
 
         if self.q2 == None:
             if self.name in ["y", "z"]:
@@ -308,7 +327,7 @@ simulator = Aer.get_backend('statevector_simulator')
 
 vector_array = [execute(qc, simulator).result().get_statevector()]
 state_matrix = np.diag([1] * 2*number_q).astype(float)
-
+print(operation_list)
 
 for operation in operation_list:
     name, qubits_list = text_to_function(operation)
@@ -366,6 +385,9 @@ while True:
 
     else:
         break
+
+
+
 
 #формирование нового файла
 with open("new.qasm", "w") as text:
