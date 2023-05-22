@@ -9,20 +9,20 @@ from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 from qiskit import QuantumCircuit, execute, Aer
 
 
-qc = QuantumCircuit(3)
+qca = QuantumCircuit(3)
 #qc.cx(0,1)
-qc.rx(0.5, 0)
-qc.h(0)
-qc.h(2)
-qc.swap(0,2)
+qca.rx(0.5, 0)
+qca.h(0)
+qca.h(2)
+qca.swap(0,2)
 
-qc.cx(2,1)
-qc.cx(0,1)
-qc.cx(2,0)
-qc.h(2)
-a = qc.qasm(filename = "test.qasm")
+qca.cx(2,1)
+qca.cx(0,1)
+qca.cx(2,0)
+qca.h(2)
+a = qca.qasm(filename = "test.qasm")
 
-print(a)
+#print(a)
 
 
 '''
@@ -47,7 +47,15 @@ def read_qasm(file):
 def text_to_function(text):
     text = text.split(" ")
     func = text[0]
-    qubits = [int(x)  for x in text[1]  if x.isdigit() == True]
+
+    text[1] = text[1].replace("q", " ")
+    text[1] = text[1].replace(",", " ")
+    text[1] = text[1].replace("[", " ")
+    text[1] = text[1].replace("]", " ")
+    text[1] = text[1].split(" ")
+
+    qubits = [int(x)  for x in text[1]  if x != ""]
+
     return func, qubits
 
 
@@ -226,9 +234,9 @@ class Hoare_function:
                 [0, 1, 0, 0],
                 [0, 0, 0, 1]
             ])
-        else:
+        #else:
             #тут можно найти вектора собственного базиса
-            return print("no working")
+            #return print("no working in self vectors")
 
 
     def R(self, vector_global):
@@ -270,7 +278,7 @@ class Hoare_function:
 
     def h_con(self): #находим обратную матрицу
 
-        return print("No working")
+        return print("No working in h_con")
 
 class np_dict:
     def __init__(self, keys = [], values = []):
@@ -290,6 +298,7 @@ class np_dict:
             return False
 
     def append(self, key, value:list):
+
         if not find(key, self.keys):
             self.keys.append(key)
             self.values.append(value)
@@ -319,86 +328,88 @@ def removing(listt, del1, del2):
 
 ##############################################################################################################3
 
-number_q, operation_list = read_qasm("test.qasm")
 
-qc = QuantumCircuit(number_q)
-simulator = Aer.get_backend('statevector_simulator')
+def optimizate(give_name, exit_name):
+    global qc
+    number_q, operation_list = read_qasm(give_name)
 
+    qc = QuantumCircuit(number_q)
+    simulator = Aer.get_backend('statevector_simulator')
 
-vector_array = [execute(qc, simulator).result().get_statevector()]
-state_matrix = np.diag([1] * 2*number_q).astype(float)
-print(operation_list)
+    vector_array = [execute(qc, simulator).result().get_statevector()]
+    state_matrix = np.diag([1] * 2 * number_q).astype(float)
+    #print(operation_list)
 
-for operation in operation_list:
-    name, qubits_list = text_to_function(operation)
+    for operation in operation_list:
+        name, qubits_list = text_to_function(operation)
 
-    if len(qubits_list) ==2:
-        object = Hoare_function(name , qubits_list[0], qubits_list[1])
-    else:
-        object = Hoare_function(name, qubits_list[0])
-
-    a = object.R(vector_array[-1])
-    vector_array.append(a)
-
-
-print(qc.draw())
-print(vector_array)
-
-vectors_dict = np_dict()
-new_operation_list = []
-
-
-for i in range(len(vector_array)):
-    vectors_dict.append(vector_array[i], [i])
-    if i !=len(vector_array)-1:
-        name, qubits_list = text_to_function(operation_list[i])
         if len(qubits_list) == 2:
             object = Hoare_function(name, qubits_list[0], qubits_list[1])
         else:
             object = Hoare_function(name, qubits_list[0])
-        if object.P(vector_array[i]) :
-            new_operation_list.append(1)
+
+        a = object.R(vector_array[-1])
+        vector_array.append(a)
+
+    #print(qc.draw())
+    #print(vector_array)
+
+    vectors_dict = np_dict([], [])
+
+    new_operation_list = []
+
+    for i in range(len(vector_array)):
+        vectors_dict.append(vector_array[i], [i])
+        if i != len(vector_array) - 1:
+            name, qubits_list = text_to_function(operation_list[i])
+            if len(qubits_list) == 2:
+                object = Hoare_function(name, qubits_list[0], qubits_list[1])
+            else:
+                object = Hoare_function(name, qubits_list[0])
+            if object.P(vector_array[i]):
+                new_operation_list.append(1)
+            else:
+                new_operation_list.append(0)
+
+    #print(vectors_dict.values)
+    # уничтожение похожих векторов
+
+    while True:
+        maxi = 0
+        del1 = None
+        del2 = None
+        for listt in vectors_dict.values:
+            if listt == []:
+                continue
+            raz = listt[-1] - listt[0]
+
+            if raz > maxi:
+                maxi = raz
+                del1 = listt[0]
+                del2 = listt[-1]
+
+        if maxi > 0:
+            for i in range(len(vectors_dict.values)):
+                a = removing(vectors_dict.values[i], del1, del2)
+                vectors_dict.values[i] = a
+
         else:
-            new_operation_list.append(0)
+            break
 
-print(vectors_dict.values)
-#уничтожение похожих векторов
+    # формирование нового файла
+    with open(exit_name, "w") as text:
+        a, b = read_qasm("test.qasm")
+        text.write("OPENQASM 2.0; \n")
+        text.write('include "qelib1.inc"; \n')
+        text.write('qreg q[' + str(a) + ']; \n')
+        for i in range(len(operation_list)):
+            if i in vectors_dict.all_vectors() and i != len(vector_array) - 1:
+                text.write((operation_list[i]) + ";\n")
+        text.close()
 
-while True:
-    maxi = 0
-    del1 = None
-    del2 = None
-    for listt in vectors_dict.values:
-        if listt == []:
-            continue
-        raz = listt[-1] - listt[0]
+    #new_qc = QuantumCircuit.from_qasm_file("new.qasm")
+    #print(new_qc.draw())
+    #print(qc.depth())
+    return len(operation_list), qc.depth()
 
-        if raz > maxi:
-            maxi = raz
-            del1 = listt[0]
-            del2 = listt[-1]
-
-    if maxi >0:
-        for i in range(len(vectors_dict.values)):
-            a = removing(vectors_dict.values[i], del1, del2)
-            vectors_dict.values[i] = a
-
-    else:
-        break
-
-
-
-
-#формирование нового файла
-with open("new.qasm", "w") as text:
-    a, b= read_qasm("test.qasm")
-    text.write("OPENQASM 2.0; \n")
-    text.write('include "qelib1.inc"; \n')
-    text.write('qreg q[' + str(a)+']; \n')
-    for i in range(len(operation_list)):
-        if i in vectors_dict.all_vectors() and i != len(vector_array) - 1:
-            text.write((operation_list[i]) +";\n")
-    text.close()
-
-new_qc = QuantumCircuit.from_qasm_file("new.qasm")
-print(new_qc.draw())
+#print(optimizate("test.qasm", "new.qasm"))
